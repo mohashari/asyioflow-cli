@@ -1,0 +1,31 @@
+[package]
+name = "asyioflow-cli"
+version = "0.1.0"
+edition = "2021"
+description = "CLI for interacting with the AysioFlow engine"
+license = "MIT"
+repository = "https://github.com/mohashari/asyioflow-cli"
+
+[[bin]]
+name = "asyioflow"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive", "env"] }
+tonic = "0.12"
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+comfy-table = "7"
+indicatif = "0.17"
+is-terminal = "0.4"
+prost = "0.13"
+http = "1"
+
+[dev-dependencies]
+tokio-test = "0.4"
+
+[features]
+integration = []
