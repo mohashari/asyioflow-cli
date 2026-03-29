@@ -56,6 +56,7 @@ impl RestClient {
         resp.json::<Vec<Job>>().await.map_err(AppError::from)
     }
 
+    #[allow(dead_code)]
     pub async fn get_job(&self, id: &str) -> Result<Job, AppError> {
         let url = format!("{}/api/v1/jobs/{}", self.base_url, id);
         let resp = self.client.get(&url).send().await?;

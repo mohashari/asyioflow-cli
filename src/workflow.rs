@@ -165,11 +165,23 @@ pub async fn execute_workflow(
     workflow: &Workflow,
     grpc: &mut crate::grpc::GrpcClient,
     rest: &crate::rest::RestClient,
-    _use_tty: bool,
+    use_tty: bool,
     timeout_secs: u64,
 ) -> Result<(), crate::error::AppError> {
     let batches = topological_batches(workflow);
     let deadline = Instant::now() + Duration::from_secs(timeout_secs);
+
+    // Collect all step names for TTY progress setup
+    let all_step_names: Vec<String> = workflow.steps.iter().map(|s| s.name.clone()).collect();
+    let step_name_refs: Vec<&str> = all_step_names.iter().map(|s| s.as_str()).collect();
+
+    // Set up progress rendering
+    let (_mp, bars) = if use_tty {
+        let (mp, bars) = crate::render::create_workflow_progress(&step_name_refs);
+        (Some(mp), bars)
+    } else {
+        (None, std::collections::HashMap::new())
+    };
 
     for batch in &batches {
         // Submit all steps in this batch sequentially
@@ -179,7 +191,11 @@ pub async fn execute_workflow(
             let resp = grpc
                 .submit_job(step.job_type.clone(), payload_json, 5, 3)
                 .await?;
-            crate::render::print_step_update(&step.name, "submitted");
+            if use_tty {
+                crate::render::update_step_progress(&bars, &step.name, "submitted");
+            } else {
+                crate::render::print_step_update(&step.name, "submitted");
+            }
             job_ids.push((step.name.clone(), resp.id));
         }
 
@@ -201,11 +217,13 @@ pub async fn execute_workflow(
                     continue;
                 }
                 if let Some(job) = jobs.iter().find(|j| &j.id == job_id) {
-                    if TERMINAL_STATUSES.contains(&job.status.as_str()) {
-                        crate::render::print_step_update(step_name, &job.status);
-                        completed.insert(step_name.clone(), job.status.clone());
+                    if use_tty {
+                        crate::render::update_step_progress(&bars, step_name, &job.status);
                     } else {
                         crate::render::print_step_update(step_name, &job.status);
+                    }
+                    if TERMINAL_STATUSES.contains(&job.status.as_str()) {
+                        completed.insert(step_name.clone(), job.status.clone());
                     }
                 }
             }
@@ -237,6 +255,7 @@ pub async fn execute_workflow(
         }
     }
 
+    // Progress bars finished — print success below them
     println!("workflow '{}' completed successfully", workflow.name);
     Ok(())
 }
