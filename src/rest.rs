@@ -71,6 +71,9 @@ impl RestClient {
     pub async fn get_metrics(&self) -> Result<String, AppError> {
         let url = format!("{}/metrics", self.base_url);
         let resp = self.client.get(&url).send().await?;
+        if !resp.status().is_success() {
+            return Err(AppError::Other(format!("HTTP {}", resp.status())));
+        }
         resp.text().await.map_err(AppError::from)
     }
 
