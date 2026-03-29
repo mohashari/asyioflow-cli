@@ -70,7 +70,7 @@ impl GrpcClient {
         let channel = endpoint
             .connect()
             .await
-            .map_err(|_| AppError::EngineUnreachable(addr.to_string()))?;
+            .map_err(|e| AppError::EngineUnreachable(format!("{}: {}", addr, e)))?;
         Ok(Self {
             inner: tonic::client::Grpc::new(channel),
         })
