@@ -1,4 +1,6 @@
 use comfy_table::Table;
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use std::collections::HashMap;
 use crate::rest::{Job, StatusSummary};
 use crate::grpc::JobResponse;
 
@@ -134,4 +136,31 @@ pub fn print_metrics_json(m: &MetricValues) {
 
 pub fn print_step_update(step: &str, status: &str) {
     println!("[{}] {}", step, status);
+}
+
+/// Returns a MultiProgress and a map of step_name → ProgressBar.
+pub fn create_workflow_progress(step_names: &[&str]) -> (MultiProgress, HashMap<String, ProgressBar>) {
+    let mp = MultiProgress::new();
+    let style = ProgressStyle::with_template("{spinner:.green} {prefix:.bold} {msg}")
+        .unwrap()
+        .tick_chars("⠁⠂⠄⡀⢀⠠⠐⠈ ");
+    let mut bars = HashMap::new();
+    for name in step_names {
+        let pb = mp.add(ProgressBar::new_spinner());
+        pb.set_style(style.clone());
+        pb.set_prefix(name.to_string());
+        pb.set_message("waiting");
+        bars.insert(name.to_string(), pb);
+    }
+    (mp, bars)
+}
+
+pub fn update_step_progress(bars: &HashMap<String, ProgressBar>, step: &str, status: &str) {
+    if let Some(pb) = bars.get(step) {
+        pb.set_message(status.to_string());
+        pb.tick();
+        if status == "completed" || status == "dead" || status == "failed" {
+            pb.finish();
+        }
+    }
 }

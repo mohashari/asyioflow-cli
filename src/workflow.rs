@@ -1,6 +1,10 @@
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::time::{Duration, Instant};
 use crate::error::AppError;
+
+const POLL_INTERVAL_SECS: u64 = 2;
+const TERMINAL_STATUSES: &[&str] = &["completed", "failed", "dead"];
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct WorkflowStep {
@@ -156,13 +160,83 @@ pub fn topological_batches(workflow: &Workflow) -> Vec<Vec<WorkflowStep>> {
     batches
 }
 
-/// Execute a validated workflow. Implemented in Task 8.
+/// Execute a validated workflow against the engine.
 pub async fn execute_workflow(
-    _workflow: &Workflow,
-    _grpc: &mut crate::grpc::GrpcClient,
-    _rest: &crate::rest::RestClient,
+    workflow: &Workflow,
+    grpc: &mut crate::grpc::GrpcClient,
+    rest: &crate::rest::RestClient,
     _use_tty: bool,
-    _timeout_secs: u64,
+    timeout_secs: u64,
 ) -> Result<(), crate::error::AppError> {
-    Err(crate::error::AppError::Other("workflow execution not yet implemented".to_string()))
+    let batches = topological_batches(workflow);
+    let deadline = Instant::now() + Duration::from_secs(timeout_secs);
+
+    for batch in &batches {
+        // Submit all steps in this batch sequentially
+        let mut job_ids: Vec<(String, String)> = Vec::new(); // (step_name, job_id)
+        for step in batch {
+            let payload_json = step.payload.to_string();
+            let resp = grpc
+                .submit_job(step.job_type.clone(), payload_json, 5, 3)
+                .await?;
+            crate::render::print_step_update(&step.name, "submitted");
+            job_ids.push((step.name.clone(), resp.id));
+        }
+
+        // Poll until all steps in batch reach terminal status
+        let mut completed: HashMap<String, String> = HashMap::new(); // step_name → final_status
+        loop {
+            if Instant::now() >= deadline {
+                return Err(crate::error::AppError::Other(format!(
+                    "workflow timed out after {}s",
+                    timeout_secs
+                )));
+            }
+            tokio::time::sleep(Duration::from_secs(POLL_INTERVAL_SECS)).await;
+
+            // Poll all non-terminal steps
+            let jobs = rest.list_jobs(None, 1000).await.unwrap_or_default();
+            for (step_name, job_id) in &job_ids {
+                if completed.contains_key(step_name) {
+                    continue;
+                }
+                if let Some(job) = jobs.iter().find(|j| &j.id == job_id) {
+                    if TERMINAL_STATUSES.contains(&job.status.as_str()) {
+                        crate::render::print_step_update(step_name, &job.status);
+                        completed.insert(step_name.clone(), job.status.clone());
+                    } else {
+                        crate::render::print_step_update(step_name, &job.status);
+                    }
+                }
+            }
+
+            // Check for failures — cancel in-flight jobs, return error
+            for (step_name, status) in &completed {
+                if status == "failed" || status == "dead" {
+                    for (other_step, other_job_id) in &job_ids {
+                        if !completed.contains_key(other_step) {
+                            let _ = grpc.cancel_job(other_job_id.clone()).await;
+                        }
+                    }
+                    let job_id = job_ids
+                        .iter()
+                        .find(|(n, _)| n == step_name)
+                        .map(|(_, id)| id.clone())
+                        .unwrap_or_default();
+                    return Err(crate::error::AppError::WorkflowFailed {
+                        step: step_name.clone(),
+                        job_id,
+                    });
+                }
+            }
+
+            // All steps in batch done?
+            if completed.len() == job_ids.len() {
+                break;
+            }
+        }
+    }
+
+    println!("workflow '{}' completed successfully", workflow.name);
+    Ok(())
 }
