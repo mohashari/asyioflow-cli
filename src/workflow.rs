@@ -112,11 +112,20 @@ pub fn topological_batches(workflow: &Workflow) -> Vec<Vec<WorkflowStep>> {
         .iter()
         .map(|s| (s.name.as_str(), s))
         .collect();
-
-    let mut queue: VecDeque<&str> = in_degree
+    // Preserve YAML declaration order for deterministic output
+    let step_order: HashMap<&str, usize> = workflow
+        .steps
         .iter()
-        .filter(|(_, &d)| d == 0)
-        .map(|(k, _)| *k)
+        .enumerate()
+        .map(|(i, s)| (s.name.as_str(), i))
+        .collect();
+
+    // Seed queue in YAML declaration order
+    let mut queue: VecDeque<&str> = workflow
+        .steps
+        .iter()
+        .filter(|s| in_degree.get(s.name.as_str()).copied().unwrap_or(0) == 0)
+        .map(|s| s.name.as_str())
         .collect();
 
     let mut batches: Vec<Vec<WorkflowStep>> = Vec::new();
@@ -128,14 +137,19 @@ pub fn topological_batches(workflow: &Workflow) -> Vec<Vec<WorkflowStep>> {
             let name = queue.pop_front().unwrap();
             batch.push((*step_map[name]).clone());
         }
+        let mut newly_unblocked: Vec<&str> = Vec::new();
         for step in &batch {
             for &dep in dependents.get(step.name.as_str()).unwrap_or(&vec![]) {
                 let d = in_degree.get_mut(dep).unwrap();
                 *d -= 1;
                 if *d == 0 {
-                    queue.push_back(dep);
+                    newly_unblocked.push(dep);
                 }
             }
+        }
+        newly_unblocked.sort_by_key(|name| step_order.get(name).copied().unwrap_or(usize::MAX));
+        for name in newly_unblocked {
+            queue.push_back(name);
         }
         batches.push(batch);
     }
