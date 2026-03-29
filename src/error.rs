@@ -45,6 +45,8 @@ impl From<reqwest::Error> for AppError {
     }
 }
 
+impl std::error::Error for AppError {}
+
 /// Maps AppError variant to process exit code.
 /// 0=success (not an error), 1=logical failure, 2=engine unreachable, 3=bad args (Clap handles automatically)
 pub fn exit_code(e: &AppError) -> i32 {
