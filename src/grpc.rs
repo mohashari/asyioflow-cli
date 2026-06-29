@@ -88,7 +88,7 @@ impl GrpcClient {
             .await
             .map_err(|_| AppError::EngineUnreachable("not ready".to_string()))?;
         let path = http::uri::PathAndQuery::from_static(
-            "/asyioflow.JobService/SubmitJob",
+            "/asyioflow.v1.AysioFlowService/SubmitJob",
         );
         let req = SubmitJobRequest {
             job_type,
@@ -114,7 +114,7 @@ impl GrpcClient {
             .await
             .map_err(|_| AppError::EngineUnreachable("not ready".to_string()))?;
         let path = http::uri::PathAndQuery::from_static(
-            "/asyioflow.JobService/GetJob",
+            "/asyioflow.v1.AysioFlowService/GetJob",
         );
         let resp = self
             .inner
@@ -134,7 +134,7 @@ impl GrpcClient {
             .await
             .map_err(|_| AppError::EngineUnreachable("not ready".to_string()))?;
         let path = http::uri::PathAndQuery::from_static(
-            "/asyioflow.JobService/CancelJob",
+            "/asyioflow.v1.AysioFlowService/CancelJob",
         );
         let resp = self
             .inner

@@ -1,0 +1,17 @@
+name: test-pipeline
+steps:
+  - name: fetch
+    job_type: http-fetch
+    payload:
+      url: "https://httpbin.org/get"
+    depends_on: []
+  - name: transform
+    job_type: data-transform
+    payload:
+      format: "json"
+    depends_on: [fetch]
+  - name: load
+    job_type: db-load
+    payload:
+      table: "users"
+    depends_on: [transform]

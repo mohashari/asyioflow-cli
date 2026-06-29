@@ -4,6 +4,7 @@ use crate::error::AppError;
 #[derive(Debug, Clone, Deserialize, serde::Serialize)]
 pub struct Job {
     pub id: String,
+    #[serde(rename = "type")]
     pub job_type: String,
     pub status: String,
     pub priority: i32,
